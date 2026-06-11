@@ -16,8 +16,7 @@ struct TetherLoopApp: App {
         MenuBarExtra {
             TetherLoopMenu(model: model)
         } label: {
-            Image(systemName: model.status.symbolName)
-                .help(model.status.displayName)
+            MenuBarStatusIcon(status: model.status)
         }
         .menuBarExtraStyle(.menu)
 
