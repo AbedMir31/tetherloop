@@ -127,4 +127,50 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(model.selectableSSIDs, ["Cafe", "Home", "Phone"])
         XCTAssertNil(model.networkChoicesError)
     }
+
+    func testRefreshNetworkChoicesDefaultsTrustedNetworkToCurrentWiFi() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            hotspotSSID: "Phone"
+        ))
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(
+                currentSSID: "Home",
+                preferredSSIDs: ["Home", "Phone"]
+            ),
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.refreshNetworkChoices()
+
+        XCTAssertEqual(model.currentSSID, "Home")
+        XCTAssertEqual(model.trustedSSIDs, ["Home"])
+        XCTAssertEqual(store.load().trustedSSIDs, ["Home"])
+    }
+
+    func testRefreshNetworkChoicesDoesNotDefaultHotspotAsTrustedNetwork() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            hotspotSSID: "Phone"
+        ))
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(
+                currentSSID: "Phone",
+                preferredSSIDs: ["Phone", "Home"]
+            ),
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.refreshNetworkChoices()
+
+        XCTAssertEqual(model.currentSSID, "Phone")
+        XCTAssertTrue(model.trustedSSIDs.isEmpty)
+        XCTAssertTrue(store.load().trustedSSIDs.isEmpty)
+    }
 }

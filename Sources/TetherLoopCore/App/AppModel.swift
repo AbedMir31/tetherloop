@@ -8,6 +8,7 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var status: ProtectionStatus = .unconfigured
     @Published public private(set) var diagnostics: [DiagnosticEvent] = []
     @Published public private(set) var networkChoices: [String] = []
+    @Published public private(set) var currentSSID: String?
     @Published public private(set) var isRefreshingNetworks = false
     @Published public private(set) var networkChoicesError: String?
     private let settingsStore: SettingsStore
@@ -134,8 +135,11 @@ public final class AppModel: ObservableObject {
             firstError = error
         }
 
+        var detectedCurrentSSID: String?
+
         do {
             if let currentSSID = try await networkAdapter.currentSSID() {
+                detectedCurrentSSID = currentSSID
                 ssids.append(currentSSID)
             }
         } catch {
@@ -144,8 +148,10 @@ public final class AppModel: ObservableObject {
             }
         }
 
+        currentSSID = detectedCurrentSSID
         let choices = Self.sortedUniqueSSIDs(ssids)
         networkChoices = choices
+        defaultTrustedSSIDIfNeeded(detectedCurrentSSID)
 
         if choices.isEmpty, let firstError {
             let message = firstError.localizedDescription
@@ -326,6 +332,17 @@ public final class AppModel: ObservableObject {
         let event = DiagnosticEvent(kind: kind, message: message)
         diagnosticsStore.append(event)
         diagnostics = diagnosticsStore.loadEvents()
+    }
+
+    private func defaultTrustedSSIDIfNeeded(_ ssid: String?) {
+        guard settings.trustedSSIDs.isEmpty,
+              let ssid,
+              ssid != settings.hotspotSSID else {
+            return
+        }
+
+        updateSettings { $0.trustedSSIDs.insert(ssid) }
+        record(.settingsChanged, "Defaulted trusted Wi-Fi to current network: \(ssid)")
     }
 
     private static func sortedUniqueSSIDs(_ ssids: [String]) -> [String] {
