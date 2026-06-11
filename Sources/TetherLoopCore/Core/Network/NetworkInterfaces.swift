@@ -28,6 +28,8 @@ public final class FakeNetworkAdapter: NetworkAdapter {
     public var current: String?
     public var preferred: [String]
     public var joinError: Error?
+    public var joinResults: [Result<Void, Error>] = []
+    public private(set) var joinAttempts: [String] = []
     public private(set) var joinedSSIDs: [String] = []
 
     public init(currentSSID: String? = nil, preferredSSIDs: [String] = []) {
@@ -44,6 +46,20 @@ public final class FakeNetworkAdapter: NetworkAdapter {
     }
 
     public func join(ssid: String) async throws {
+        joinAttempts.append(ssid)
+
+        if !joinResults.isEmpty {
+            let result = joinResults.removeFirst()
+            switch result {
+            case .success:
+                joinedSSIDs.append(ssid)
+                current = ssid
+                return
+            case .failure(let error):
+                throw error
+            }
+        }
+
         if let joinError {
             throw joinError
         }

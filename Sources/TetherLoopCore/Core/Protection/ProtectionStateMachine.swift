@@ -9,6 +9,7 @@ public enum ProtectionEvent: Equatable {
     case trustedWiFiConnected(String)
     case trustedWiFiDisconnected(String)
     case untrustedWiFiDisconnected
+    case trustedWiFiJoinFailed(String, String)
     case hotspotJoinSucceeded(String)
     case hotspotJoinFailed(String)
     case retryTimerFired
@@ -17,6 +18,7 @@ public enum ProtectionEvent: Equatable {
 public enum ProtectionIntent: Equatable {
     case startSleepPrevention
     case stopSleepPrevention
+    case scheduleRetry(TimeInterval)
     case record(DiagnosticEvent.Kind, String)
     case none
 }
@@ -91,18 +93,28 @@ public struct ProtectionStateMachine: Equatable {
             retryAttempt = 0
             intents.append(.record(.trustedNetworkLost, "Wi-Fi disconnected in global mode"))
 
+        case .trustedWiFiJoinFailed(let ssid, let message):
+            status = canProtect ? .failed : .unconfigured
+            intents.append(.record(.networkError, "Return to Wi-Fi failed for \(ssid): \(message)"))
+
         case .hotspotJoinSucceeded(let ssid):
             status = .onHotspot
             retryAttempt = 0
             intents.append(.record(.hotspotJoinSucceeded, "Joined hotspot: \(ssid)"))
 
         case .hotspotJoinFailed(let message):
+            guard canProtect else {
+                status = .unconfigured
+                intents.append(.record(.hotspotJoinFailed, "Hotspot join failed: \(message)"))
+                break
+            }
             status = .failed
             let delay = retryPolicy.delay(forAttempt: retryAttempt)
             retryAttempt += 1
             intents.append(.record(.hotspotJoinFailed, "Hotspot join failed: \(message)"))
             if let delay {
                 intents.append(.record(.retryScheduled, "Retry scheduled in \(Int(delay)) seconds"))
+                intents.append(.scheduleRetry(delay))
             }
 
         case .retryTimerFired, .userTryNow:

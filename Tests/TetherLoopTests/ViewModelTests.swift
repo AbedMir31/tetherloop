@@ -85,6 +85,236 @@ final class ViewModelTests: XCTestCase {
         XCTAssertFalse(model.settings.isSetupVerified)
     }
 
+    func testReturnToWiFiJoinsLastTrustedNetwork() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home", "Office"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Office")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        network.current = "Phone"
+        await model.returnToWiFi()
+
+        XCTAssertEqual(network.joinAttempts, ["Office"])
+        XCTAssertEqual(network.current, "Office")
+    }
+
+    func testReturnToWiFiFallsBackToFirstTrustedNetwork() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Office", "Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Phone")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.returnToWiFi()
+
+        XCTAssertEqual(network.joinAttempts, ["Home"])
+        XCTAssertEqual(network.current, "Home")
+    }
+
+    func testReturnToWiFiFailureDoesNotScheduleHotspotRetry() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Phone")
+        network.joinResults = [
+            .failure(NetworkAdapterError.commandFailed("join failed")),
+            .success(())
+        ]
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.returnToWiFi()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(network.joinAttempts, ["Home"])
+        XCTAssertEqual(network.current, "Phone")
+        XCTAssertEqual(model.status, .failed)
+    }
+
+    func testTrustedDisconnectRetriesHotspotAfterFailure() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        network.joinResults = [
+            .failure(NetworkAdapterError.commandFailed("not found")),
+            .success(())
+        ]
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(network.joinAttempts, ["Phone", "Phone"])
+        XCTAssertEqual(network.current, "Phone")
+        XCTAssertEqual(model.status, .onHotspot)
+    }
+
+    func testDisablingProtectionCancelsScheduledRetry() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        network.joinResults = [
+            .failure(NetworkAdapterError.commandFailed("first failure")),
+            .failure(NetworkAdapterError.commandFailed("second failure")),
+            .success(())
+        ]
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        model.setProtectionEnabled(false)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(network.joinAttempts, ["Phone", "Phone"])
+        XCTAssertNil(network.current)
+    }
+
+    func testGlobalFailoverJoinsHotspotAfterUntrustedDisconnectWhenEnabled() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true,
+            isGlobalFailoverEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Cafe")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+
+        XCTAssertEqual(network.joinAttempts, ["Phone"])
+        XCTAssertEqual(network.current, "Phone")
+    }
+
+    func testGlobalFailoverDoesNotResetRetryWhileAlreadyDisconnected() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true,
+            isGlobalFailoverEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Cafe")
+        network.joinResults = [
+            .failure(NetworkAdapterError.commandFailed("first failure")),
+            .failure(NetworkAdapterError.commandFailed("second failure")),
+            .success(())
+        ]
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await model.pollNetwork()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(network.joinAttempts, ["Phone", "Phone"])
+        XCTAssertNil(network.current)
+        XCTAssertEqual(model.status, .failed)
+        model.setProtectionEnabled(false)
+    }
+
+    func testUntrustedDisconnectDoesNotJoinHotspotWhenGlobalFailoverIsDisabled() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true,
+            isGlobalFailoverEnabled: false
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Cafe")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+
+        XCTAssertTrue(network.joinAttempts.isEmpty)
+    }
+
     func testLaunchAtLoginCallsControllerBeforePersisting() {
         let store = InMemorySettingsStore()
         let login = RecordingLoginItemController()

@@ -9,10 +9,14 @@ public struct SettingsView: View {
 
     public var body: some View {
         TabView {
-            Form {
-                SectionHeader("Protection", subtitle: "Configure Free V1 behavior.")
+            SettingsTabPage {
+                SectionHeader("Protection", subtitle: "Choose when TetherLoop protects your connection.")
                 ProtectionToggles(model: model)
-                Toggle("Global failover", isOn: Binding(
+
+                Divider()
+                    .padding(.vertical, 2)
+
+                Toggle("Allow global failover", isOn: Binding(
                     get: { model.settings.isGlobalFailoverEnabled },
                     set: { model.setGlobalFailoverEnabled($0) }
                 ))
@@ -20,18 +24,19 @@ public struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(20)
             .tabItem {
                 Label("Protection", systemImage: "shield")
             }
 
-            Form {
+            SettingsTabPage {
                 SectionHeader("Networks", subtitle: "TetherLoop stores SSIDs only. Hotspot passwords stay with macOS.")
                 TrustedNetworksEditor(model: model)
+
                 Divider()
+                    .padding(.vertical, 2)
+
                 HotspotEditor(model: model)
             }
-            .padding(20)
             .tabItem {
                 Label("Networks", systemImage: "wifi")
             }
@@ -41,6 +46,27 @@ public struct SettingsView: View {
                     Label("Logs", systemImage: "list.bullet.rectangle")
                 }
         }
+    }
+}
+
+private struct SettingsTabPage<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 28)
+            .padding(.top, 22)
+            .padding(.bottom, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

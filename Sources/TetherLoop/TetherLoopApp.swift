@@ -22,7 +22,7 @@ struct TetherLoopApp: App {
 
         Settings {
             SettingsView(model: model)
-                .frame(width: 660, height: 560)
+                .frame(width: 560, height: 380)
         }
 
         Window("TetherLoop Setup", id: "onboarding") {

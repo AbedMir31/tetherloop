@@ -39,7 +39,7 @@ public struct TetherLoopMenu: View {
             model.tryHotspotNow()
         }
         Button("Return to Wi-Fi", systemImage: "wifi") {
-            model.returnToWiFi()
+            Task { await model.returnToWiFi() }
         }
 
         Divider()

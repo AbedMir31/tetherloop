@@ -19,7 +19,9 @@ public final class AppModel: ObservableObject {
     private let notificationDispatcher: NotificationDispatching
     private var stateMachine: ProtectionStateMachine
     private var previousSSID: String?
+    private var lastTrustedSSID: String?
     private var monitorTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
 
     public init(
         settingsStore: SettingsStore,
@@ -114,6 +116,7 @@ public final class AppModel: ObservableObject {
 
     public func setHotspotSSID(_ ssid: String) {
         let trimmed = ssid.trimmingCharacters(in: .whitespacesAndNewlines)
+        cancelRetry()
         updateSettings {
             $0.hotspotSSID = trimmed.isEmpty ? nil : trimmed
             $0.isSetupVerified = false
@@ -165,6 +168,9 @@ public final class AppModel: ObservableObject {
     }
 
     public func setProtectionEnabled(_ enabled: Bool) {
+        if !enabled {
+            cancelRetry()
+        }
         updateSettings { $0.isProtectionEnabled = enabled }
         handle(.settingsChanged)
         record(enabled ? .protectionEnabled : .protectionPaused, enabled ? "Protection enabled" : "Protection disabled")
@@ -194,6 +200,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func pauseProtection() {
+        cancelRetry()
         handle(.userPause)
     }
 
@@ -206,9 +213,26 @@ public final class AppModel: ObservableObject {
         await verifyHotspotSetup()
     }
 
-    public func returnToWiFi() {
+    public func returnToWiFi() async {
+        cancelRetry()
         handle(.userReturnToWiFi)
-        record(.manualAction, "Return to Wi-Fi requested")
+        guard let target = returnWiFiTarget() else {
+            record(.networkError, "Return to Wi-Fi failed: no trusted Wi-Fi network is configured")
+            return
+        }
+
+        record(.manualAction, "Return to Wi-Fi requested: \(target)")
+        do {
+            try await networkAdapter.join(ssid: target)
+            previousSSID = target
+            lastTrustedSSID = target
+            handle(.trustedWiFiConnected(target))
+            record(.manualAction, "Returned to Wi-Fi: \(target)")
+            notificationDispatcher.notify(title: "TetherLoop returned to Wi-Fi", body: target)
+        } catch {
+            handle(.trustedWiFiJoinFailed(target, error.localizedDescription))
+            notificationDispatcher.notify(title: "TetherLoop could not return to Wi-Fi", body: error.localizedDescription)
+        }
     }
 
     public func startMonitoring(intervalSeconds: UInt64 = 5) {
@@ -224,6 +248,7 @@ public final class AppModel: ObservableObject {
     public func stopMonitoring() {
         monitorTask?.cancel()
         monitorTask = nil
+        cancelRetry()
     }
 
     public func pollNetwork() async {
@@ -232,13 +257,20 @@ public final class AppModel: ObservableObject {
             defer { previousSSID = current }
 
             if let current, settings.trustedSSIDs.contains(current) {
+                lastTrustedSSID = current
                 handle(.trustedWiFiConnected(current))
                 return
             }
 
-            if current == nil, let previousSSID, settings.trustedSSIDs.contains(previousSSID) {
+            guard current == nil else { return }
+
+            if let previousSSID, settings.trustedSSIDs.contains(previousSSID) {
+                lastTrustedSSID = previousSSID
                 handle(.trustedWiFiDisconnected(previousSSID))
                 await joinHotspotIfPossible(reason: "Trusted Wi-Fi disconnected")
+            } else if settings.isGlobalFailoverEnabled, previousSSID != nil {
+                handle(.untrustedWiFiDisconnected)
+                await joinHotspotIfPossible(reason: "Wi-Fi disconnected in global mode")
             }
         } catch {
             record(.networkError, "Network poll failed: \(error.localizedDescription)")
@@ -253,6 +285,7 @@ public final class AppModel: ObservableObject {
         record(.hotspotJoinStarted, "\(reason): \(hotspot)")
         do {
             try await networkAdapter.join(ssid: hotspot)
+            cancelRetry()
             handle(.hotspotJoinSucceeded(hotspot))
             record(.hotspotJoinSucceeded, "Joined \(hotspot)")
             notificationDispatcher.notify(title: "TetherLoop switched to hotspot", body: hotspot)
@@ -281,6 +314,9 @@ public final class AppModel: ObservableObject {
 
             if let originalSSID, originalSSID != hotspot {
                 try? await networkAdapter.join(ssid: originalSSID)
+                if settings.trustedSSIDs.contains(originalSSID) {
+                    lastTrustedSSID = originalSSID
+                }
                 record(.manualAction, "Returned to Wi-Fi: \(originalSSID)")
             }
         } catch {
@@ -312,6 +348,8 @@ public final class AppModel: ObservableObject {
                 try? powerController.enable(reason: "TetherLoop protection is active")
             case .stopSleepPrevention:
                 try? powerController.disable()
+            case .scheduleRetry(let delay):
+                scheduleRetry(after: delay)
             case .record(let kind, let message):
                 record(kind, message)
             case .none:
@@ -332,6 +370,42 @@ public final class AppModel: ObservableObject {
         let event = DiagnosticEvent(kind: kind, message: message)
         diagnosticsStore.append(event)
         diagnostics = diagnosticsStore.loadEvents()
+    }
+
+    private func returnWiFiTarget() -> String? {
+        if let lastTrustedSSID, settings.trustedSSIDs.contains(lastTrustedSSID) {
+            return lastTrustedSSID
+        }
+        return settings.trustedSSIDs.sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }.first
+    }
+
+    private func scheduleRetry(after delay: TimeInterval) {
+        cancelRetry()
+        retryTask = Task { [weak self] in
+            if delay > 0 {
+                let nanoseconds = UInt64(delay * 1_000_000_000)
+                do {
+                    try await Task.sleep(nanoseconds: nanoseconds)
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled else { return }
+            await self?.retryHotspotJoin()
+        }
+    }
+
+    private func retryHotspotJoin() async {
+        retryTask = nil
+        handle(.retryTimerFired)
+        await joinHotspotIfPossible(reason: "Retry hotspot attempt")
+    }
+
+    private func cancelRetry() {
+        retryTask?.cancel()
+        retryTask = nil
     }
 
     private func defaultTrustedSSIDIfNeeded(_ ssid: String?) {

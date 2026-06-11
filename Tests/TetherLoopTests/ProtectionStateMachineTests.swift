@@ -41,6 +41,7 @@ final class ProtectionStateMachineTests: XCTestCase {
 
         XCTAssertEqual(result.status, .failed)
         XCTAssertTrue(result.intents.contains(.record(.retryScheduled, "Retry scheduled in 0 seconds")))
+        XCTAssertTrue(result.intents.contains(.scheduleRetry(0)))
     }
 
     func testHotspotSuccessMovesOnHotspot() {
