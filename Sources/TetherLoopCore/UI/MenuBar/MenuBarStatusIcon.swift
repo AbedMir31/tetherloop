@@ -17,7 +17,7 @@ public struct MenuBarStatusIcon: View {
 
 private enum MenuBarStatusImage {
     static func make(for status: ProtectionStatus) -> NSImage {
-        let size = NSSize(width: 22, height: 18)
+        let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size)
 
         image.lockFocus()
@@ -37,13 +37,13 @@ private enum MenuBarStatusImage {
         case .unconfigured:
             return
         case .monitoring:
-            let path = NSBezierPath(ovalIn: NSRect(x: 2.8, y: 1.4, width: 16, height: 16))
+            let path = NSBezierPath(ovalIn: NSRect(x: 1.0, y: 1.4, width: 16, height: 16))
             path.lineWidth = 1.4
             path.stroke()
         case .protected, .onHotspot:
-            drawShieldOutline(in: NSRect(x: 2.4, y: 0.6, width: 17.2, height: 16.8))
+            drawShieldOutline(in: NSRect(x: 0.8, y: 0.6, width: 16.4, height: 16.8))
         case .paused:
-            let path = NSBezierPath(roundedRect: NSRect(x: 2.4, y: 1.8, width: 17.2, height: 14.4), xRadius: 4, yRadius: 4)
+            let path = NSBezierPath(roundedRect: NSRect(x: 1.0, y: 1.8, width: 16.0, height: 14.4), xRadius: 4, yRadius: 4)
             path.lineWidth = 1.4
             path.setLineDash([2, 2], count: 2, phase: 0)
             path.stroke()
@@ -73,11 +73,11 @@ private enum MenuBarStatusImage {
     private static func linkRect(for status: ProtectionStatus, size: NSSize) -> NSRect {
         switch status {
         case .protected, .onHotspot:
-            NSRect(x: 5.0, y: 3.0, width: 12.0, height: 12.0)
+            NSRect(x: 3.0, y: 3.0, width: 12.0, height: 12.0)
         case .failed:
-            NSRect(x: 6.6, y: 5.0, width: 8.8, height: 8.8)
+            NSRect(x: 4.6, y: 5.0, width: 8.8, height: 8.8)
         default:
-            NSRect(x: 5.4, y: 3.2, width: 11.2, height: 11.2)
+            NSRect(x: 3.4, y: 3.2, width: 11.2, height: 11.2)
         }
     }
 
