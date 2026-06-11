@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 public struct TetherLoopMenu: View {
@@ -10,49 +11,63 @@ public struct TetherLoopMenu: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            StatusBadge(status: model.status)
-            Text(model.setupSummary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        Label(model.status.displayName, systemImage: model.status.symbolName)
+            .disabled(true)
+        Text(model.setupSummary)
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
-            Divider()
+        Divider()
 
-            Button("Protect Now", systemImage: "shield") {
-                model.protectNow()
-            }
-            Button("Pause Protection", systemImage: "pause.circle") {
-                model.pauseProtection()
-            }
-            Button("Try Hotspot Now", systemImage: "antenna.radiowaves.left.and.right") {
-                model.tryHotspotNow()
-            }
-            Button("Return to Wi-Fi", systemImage: "wifi") {
-                model.returnToWiFi()
+        if !model.settings.isSetupVerified {
+            Button("Start Setup...", systemImage: "wand.and.stars") {
+                showWindow(id: "onboarding")
             }
 
             Divider()
-
-            Button("Setup", systemImage: "wand.and.stars") {
-                openWindow(id: "onboarding")
-            }
-            Button("Settings", systemImage: "gearshape") {
-                openSettings()
-            }
-            Button("View Logs", systemImage: "list.bullet.rectangle") {
-                openWindow(id: "logs")
-            }
-
-            Divider()
-
-            Button("Quit TetherLoop", systemImage: "power") {
-                NSApplication.shared.terminate(nil)
-            }
         }
-        .padding(.vertical, 6)
-        .frame(minWidth: 260)
-        .task {
-            await model.pollNetwork()
+
+        Button("Protect Now", systemImage: "shield") {
+            model.protectNow()
         }
+        .disabled(!model.settings.isSetupVerified)
+
+        Button("Pause Protection", systemImage: "pause.circle") {
+            model.pauseProtection()
+        }
+        Button("Try Hotspot Now", systemImage: "antenna.radiowaves.left.and.right") {
+            model.tryHotspotNow()
+        }
+        Button("Return to Wi-Fi", systemImage: "wifi") {
+            model.returnToWiFi()
+        }
+
+        Divider()
+
+        Button("Setup...", systemImage: "wand.and.stars") {
+            showWindow(id: "onboarding")
+        }
+        Button("Settings...", systemImage: "gearshape") {
+            openSettings()
+            activateApp()
+        }
+        Button("View Logs...", systemImage: "list.bullet.rectangle") {
+            showWindow(id: "logs")
+        }
+
+        Divider()
+
+        Button("Quit TetherLoop", systemImage: "power") {
+            NSApplication.shared.terminate(nil)
+        }
+    }
+
+    private func showWindow(id: String) {
+        openWindow(id: id)
+        activateApp()
+    }
+
+    private func activateApp() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }
