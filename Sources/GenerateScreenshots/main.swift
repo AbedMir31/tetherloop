@@ -32,7 +32,7 @@ struct GenerateScreenshots {
     static func main() async throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let output = root.appendingPathComponent("assets/screenshots")
-        let model = await AppModel.preview()
+        let model = AppModel.preview()
 
         try await MainActor.run {
             try render(

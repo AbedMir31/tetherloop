@@ -8,8 +8,8 @@ I got tired of long Claude Code/Codex runs dying the second I left Wi-Fi.
 
 So I built TetherLoop: a free, open-source Mac menu bar app that switches to your saved hotspot when a trusted Wi-Fi network disconnects.
 
-No password storage.  
-No telemetry.  
+No password storage.
+No telemetry.
 No terminal scraping.
 
 It is built for the exact moment where your Mac is still awake, your agent is still working, but your network just disappeared.

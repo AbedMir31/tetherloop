@@ -48,8 +48,8 @@ public struct OnboardingView: View {
                     subtitle: "Run a user-initiated test before protection can be enabled."
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Button("Mark Test Verified", systemImage: "checkmark.seal") {
-                            model.markSetupVerified()
+                        Button("Run Verification Test", systemImage: "checkmark.seal") {
+                            Task { await model.runSetupVerificationTest() }
                         }
                         Text(model.settings.isSetupVerified ? "Protection is verified." : "Run a real hotspot test before relying on protection.")
                             .font(.caption)

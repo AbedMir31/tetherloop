@@ -13,21 +13,25 @@ public final class AppModel: ObservableObject {
     private let settingsStore: SettingsStore
     private let networkAdapter: NetworkAdapter
     private let powerController: PowerAssertionControlling
+    private let loginItemController: LoginItemControlling
     private let diagnosticsStore: DiagnosticLogStoring
     private let notificationDispatcher: NotificationDispatching
     private var stateMachine: ProtectionStateMachine
     private var previousSSID: String?
+    private var monitorTask: Task<Void, Never>?
 
     public init(
         settingsStore: SettingsStore,
         networkAdapter: NetworkAdapter,
         powerController: PowerAssertionControlling,
+        loginItemController: LoginItemControlling,
         diagnosticsStore: DiagnosticLogStoring,
         notificationDispatcher: NotificationDispatching
     ) {
         self.settingsStore = settingsStore
         self.networkAdapter = networkAdapter
         self.powerController = powerController
+        self.loginItemController = loginItemController
         self.diagnosticsStore = diagnosticsStore
         self.notificationDispatcher = notificationDispatcher
         let loaded = settingsStore.load()
@@ -42,6 +46,7 @@ public final class AppModel: ObservableObject {
             settingsStore: UserDefaultsSettingsStore(),
             networkAdapter: SystemNetworkAdapter(),
             powerController: SystemPowerAssertionController(),
+            loginItemController: SystemLoginItemController(),
             diagnosticsStore: FileDiagnosticLogStore(),
             notificationDispatcher: UserNotificationDispatcher()
         )
@@ -67,6 +72,7 @@ public final class AppModel: ObservableObject {
             settingsStore: store,
             networkAdapter: FakeNetworkAdapter(currentSSID: "Abed's iPhone"),
             powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
             diagnosticsStore: logStore,
             notificationDispatcher: RecordingNotificationDispatcher()
         )
@@ -124,8 +130,13 @@ public final class AppModel: ObservableObject {
     }
 
     public func setLaunchAtLogin(_ enabled: Bool) {
-        updateSettings { $0.launchAtLogin = enabled }
-        record(.settingsChanged, enabled ? "Launch at login enabled" : "Launch at login disabled")
+        do {
+            try loginItemController.setEnabled(enabled)
+            updateSettings { $0.launchAtLogin = enabled }
+            record(.settingsChanged, enabled ? "Launch at login enabled" : "Launch at login disabled")
+        } catch {
+            record(.settingsChanged, "Launch at login update failed: \(error.localizedDescription)")
+        }
     }
 
     public func protectNow() {
@@ -141,15 +152,28 @@ public final class AppModel: ObservableObject {
         Task { await joinHotspotIfPossible(reason: "Manual hotspot attempt") }
     }
 
+    public func runSetupVerificationTest() async {
+        await verifyHotspotSetup()
+    }
+
     public func returnToWiFi() {
         handle(.userReturnToWiFi)
         record(.manualAction, "Return to Wi-Fi requested")
     }
 
-    public func markSetupVerified() {
-        updateSettings { $0.isSetupVerified = true }
-        handle(.settingsChanged)
-        record(.setupVerified, "Setup verification completed")
+    public func startMonitoring(intervalSeconds: UInt64 = 5) {
+        guard monitorTask == nil else { return }
+        monitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.pollNetwork()
+                try? await Task.sleep(for: .seconds(intervalSeconds))
+            }
+        }
+    }
+
+    public func stopMonitoring() {
+        monitorTask?.cancel()
+        monitorTask = nil
     }
 
     public func pollNetwork() async {
@@ -186,6 +210,33 @@ public final class AppModel: ObservableObject {
             handle(.hotspotJoinFailed(error.localizedDescription))
             record(.hotspotJoinFailed, "Could not join \(hotspot): \(error.localizedDescription)")
             notificationDispatcher.notify(title: "TetherLoop could not join hotspot", body: error.localizedDescription)
+        }
+    }
+
+    private func verifyHotspotSetup() async {
+        guard let hotspot = settings.hotspotSSID else {
+            record(.setupRequired, "Choose a hotspot before running setup verification")
+            return
+        }
+
+        let originalSSID = try? await networkAdapter.currentSSID()
+        record(.hotspotJoinStarted, "Testing hotspot target: \(hotspot)")
+
+        do {
+            try await networkAdapter.join(ssid: hotspot)
+            updateSettings { $0.isSetupVerified = true }
+            handle(.settingsChanged)
+            record(.setupVerified, "Setup verification completed")
+            notificationDispatcher.notify(title: "TetherLoop setup verified", body: hotspot)
+
+            if let originalSSID, originalSSID != hotspot {
+                try? await networkAdapter.join(ssid: originalSSID)
+                record(.manualAction, "Returned to Wi-Fi: \(originalSSID)")
+            }
+        } catch {
+            updateSettings { $0.isSetupVerified = false }
+            record(.hotspotJoinFailed, "Setup verification failed: \(error.localizedDescription)")
+            notificationDispatcher.notify(title: "TetherLoop setup failed", body: error.localizedDescription)
         }
     }
 

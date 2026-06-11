@@ -4,7 +4,13 @@ import TetherLoopCore
 @main
 struct TetherLoopApp: App {
     @NSApplicationDelegateAdaptor(TetherLoopAppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel.live()
+    @StateObject private var model: AppModel
+
+    init() {
+        let model = AppModel.live()
+        model.startMonitoring()
+        _model = StateObject(wrappedValue: model)
+    }
 
     var body: some Scene {
         MenuBarExtra {
