@@ -1,0 +1,42 @@
+name: Release Artifact
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Swift version
+        run: swift --version
+      - name: Package app
+        run: |
+          version="0.1.0"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          TETHERLOOP_VERSION="$version" scripts/package-app.sh
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TetherLoop
+          path: dist/TetherLoop.zip
+          if-no-files-found: error
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Free V1 app bundle for macOS 14 or newer. This build is ad-hoc signed and not notarized, so macOS may ask you to approve opening it from Privacy & Security."
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/TetherLoop.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/TetherLoop.zip --title "TetherLoop $GITHUB_REF_NAME" --notes "$notes"
+          fi

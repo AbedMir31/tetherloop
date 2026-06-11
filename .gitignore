@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+dist/
+DerivedData/
+*.xcuserstate
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xccheckout
+*.moved-aside
+*.swp
+*.lock
+Package.resolved
