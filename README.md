@@ -197,6 +197,8 @@ TetherLoop keeps system effects behind narrow interfaces so the core behavior is
 ## Project Layout
 
 ```text
+.github/
+  workflows/                   CI and release artifact automation
 Sources/
   TetherLoop/                 App entry point
   TetherLoopCore/
@@ -211,6 +213,8 @@ assets/
 docs/
   marketing/                  Positioning and launch copy drafts
   prd/                        Technical PRD
+scripts/
+  package-app.sh              Local app bundle and zip packaging
 ```
 
 ## Development Commands
