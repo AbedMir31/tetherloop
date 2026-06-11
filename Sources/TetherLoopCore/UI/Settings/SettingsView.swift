@@ -47,16 +47,25 @@ public struct SettingsView: View {
 struct TrustedNetworksEditor: View {
     @ObservedObject var model: AppModel
 
+    private var availableChoices: [String] {
+        model.selectableSSIDs.filter { !model.settings.trustedSSIDs.contains($0) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                TextField("Home Wi-Fi", text: $model.draftTrustedSSID)
-                    .textFieldStyle(.roundedBorder)
-                Button("Add") {
-                    model.addTrustedSSID(model.draftTrustedSSID)
-                }
-                .disabled(model.draftTrustedSSID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+            NetworkSelectionPicker(
+                model: model,
+                title: "Add trusted Wi-Fi",
+                placeholder: availableChoices.isEmpty ? "No remembered networks found" : "Choose Wi-Fi network",
+                choices: availableChoices,
+                selection: Binding(
+                    get: { "" },
+                    set: { ssid in
+                        guard !ssid.isEmpty else { return }
+                        model.addTrustedSSID(ssid)
+                    }
+                )
+            )
 
             if model.trustedSSIDs.isEmpty {
                 Text("No trusted networks yet.")
@@ -74,6 +83,15 @@ struct TrustedNetworksEditor: View {
                     }
                 }
             }
+
+            if let error = model.networkChoicesError {
+                Text("Could not load remembered networks: \(error)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .task {
+            await model.refreshNetworkChoices()
         }
     }
 }
@@ -83,14 +101,19 @@ struct HotspotEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                TextField(model.settings.hotspotSSID ?? "iPhone Hotspot", text: $model.draftHotspotSSID)
-                    .textFieldStyle(.roundedBorder)
-                Button("Set") {
-                    model.setHotspotSSID(model.draftHotspotSSID)
-                }
-                .disabled(model.draftHotspotSSID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+            NetworkSelectionPicker(
+                model: model,
+                title: "Hotspot target",
+                placeholder: model.selectableSSIDs.isEmpty ? "No remembered networks found" : "Choose hotspot",
+                choices: model.selectableSSIDs,
+                selection: Binding(
+                    get: { model.settings.hotspotSSID ?? "" },
+                    set: { ssid in
+                        guard !ssid.isEmpty else { return }
+                        model.setHotspotSSID(ssid)
+                    }
+                )
+            )
             HStack {
                 Label(model.settings.hotspotSSID ?? "No hotspot selected", systemImage: "antenna.radiowaves.left.and.right")
                 Spacer()
@@ -103,6 +126,44 @@ struct HotspotEditor: View {
                 }
             }
             .font(.caption)
+        }
+        .task {
+            await model.refreshNetworkChoices()
+        }
+    }
+}
+
+private struct NetworkSelectionPicker: View {
+    @ObservedObject var model: AppModel
+    let title: String
+    let placeholder: String
+    let choices: [String]
+    @Binding var selection: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Picker(title, selection: $selection) {
+                Text(placeholder)
+                    .tag("")
+                    .selectionDisabled(true)
+                ForEach(choices, id: \.self) { ssid in
+                    Label(ssid, systemImage: "wifi")
+                        .tag(ssid)
+                }
+            }
+            .pickerStyle(.menu)
+            .disabled(choices.isEmpty && selection.isEmpty)
+
+            Button("Refresh networks", systemImage: "arrow.clockwise") {
+                Task { await model.refreshNetworkChoices() }
+            }
+            .labelStyle(.iconOnly)
+            .help("Refresh remembered Wi-Fi networks")
+
+            if model.isRefreshingNetworks {
+                ProgressView()
+                    .controlSize(.small)
+            }
         }
     }
 }

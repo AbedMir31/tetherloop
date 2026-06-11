@@ -102,4 +102,29 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(login.requestedValues, [true])
         XCTAssertTrue(store.load().launchAtLogin)
     }
+
+    func testRefreshNetworkChoicesIncludesRememberedCurrentAndSavedNetworks() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone"
+        ))
+        let network = FakeNetworkAdapter(
+            currentSSID: "Cafe",
+            preferredSSIDs: ["Phone", "Home", "Phone", "  "]
+        )
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.refreshNetworkChoices()
+
+        XCTAssertEqual(model.networkChoices, ["Cafe", "Home", "Phone"])
+        XCTAssertEqual(model.selectableSSIDs, ["Cafe", "Home", "Phone"])
+        XCTAssertNil(model.networkChoicesError)
+    }
 }

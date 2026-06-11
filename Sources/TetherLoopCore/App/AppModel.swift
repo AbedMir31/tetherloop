@@ -7,9 +7,9 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var settings: TetherLoopSettings
     @Published public private(set) var status: ProtectionStatus = .unconfigured
     @Published public private(set) var diagnostics: [DiagnosticEvent] = []
-    @Published public var draftTrustedSSID = ""
-    @Published public var draftHotspotSSID = ""
-
+    @Published public private(set) var networkChoices: [String] = []
+    @Published public private(set) var isRefreshingNetworks = false
+    @Published public private(set) var networkChoicesError: String?
     private let settingsStore: SettingsStore
     private let networkAdapter: NetworkAdapter
     private let powerController: PowerAssertionControlling
@@ -70,7 +70,10 @@ public final class AppModel: ObservableObject {
         ])
         return AppModel(
             settingsStore: store,
-            networkAdapter: FakeNetworkAdapter(currentSSID: "Abed's iPhone"),
+            networkAdapter: FakeNetworkAdapter(
+                currentSSID: "Abed's iPhone",
+                preferredSSIDs: ["Home Wi-Fi", "Office", "Abed's iPhone"]
+            ),
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: logStore,
@@ -80,6 +83,11 @@ public final class AppModel: ObservableObject {
 
     public var trustedSSIDs: [String] {
         settings.trustedSSIDs.sorted()
+    }
+
+    public var selectableSSIDs: [String] {
+        let savedHotspot = [settings.hotspotSSID].compactMap { $0 }
+        return Self.sortedUniqueSSIDs(networkChoices + trustedSSIDs + savedHotspot)
     }
 
     public var setupSummary: String {
@@ -95,7 +103,6 @@ public final class AppModel: ObservableObject {
         let trimmed = ssid.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         updateSettings { $0.trustedSSIDs.insert(trimmed) }
-        draftTrustedSSID = ""
         record(.settingsChanged, "Added trusted Wi-Fi: \(trimmed)")
     }
 
@@ -110,8 +117,45 @@ public final class AppModel: ObservableObject {
             $0.hotspotSSID = trimmed.isEmpty ? nil : trimmed
             $0.isSetupVerified = false
         }
-        draftHotspotSSID = ""
         record(.settingsChanged, "Updated hotspot target")
+    }
+
+    public func refreshNetworkChoices() async {
+        guard !isRefreshingNetworks else { return }
+        isRefreshingNetworks = true
+        defer { isRefreshingNetworks = false }
+
+        var ssids: [String] = []
+        var firstError: Error?
+
+        do {
+            ssids.append(contentsOf: try await networkAdapter.preferredSSIDs())
+        } catch {
+            firstError = error
+        }
+
+        do {
+            if let currentSSID = try await networkAdapter.currentSSID() {
+                ssids.append(currentSSID)
+            }
+        } catch {
+            if firstError == nil {
+                firstError = error
+            }
+        }
+
+        let choices = Self.sortedUniqueSSIDs(ssids)
+        networkChoices = choices
+
+        if choices.isEmpty, let firstError {
+            let message = firstError.localizedDescription
+            if networkChoicesError != message {
+                record(.networkError, "Could not load remembered Wi-Fi networks: \(message)")
+            }
+            networkChoicesError = message
+        } else {
+            networkChoicesError = nil
+        }
     }
 
     public func setProtectionEnabled(_ enabled: Bool) {
@@ -282,5 +326,14 @@ public final class AppModel: ObservableObject {
         let event = DiagnosticEvent(kind: kind, message: message)
         diagnosticsStore.append(event)
         diagnostics = diagnosticsStore.loadEvents()
+    }
+
+    private static func sortedUniqueSSIDs(_ ssids: [String]) -> [String] {
+        let cleaned = ssids
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return Array(Set(cleaned)).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
     }
 }
