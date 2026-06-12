@@ -241,7 +241,7 @@ public final class AppModel: ObservableObject {
 
     public func tryHotspotNow() {
         handle(.userTryNow)
-        Task { await joinHotspotIfPossible(reason: "Manual hotspot attempt") }
+        Task { await joinHotspotIfPossible(trigger: .manual) }
     }
 
     public func runSetupVerificationTest() async {
@@ -346,12 +346,12 @@ public final class AppModel: ObservableObject {
                 lastTrustedSSID = previousSSID
                 let result = handle(.trustedWiFiDisconnected(previousSSID))
                 if result.status == .switching {
-                    await joinHotspotIfPossible(reason: "Trusted Wi-Fi disconnected")
+                    await joinHotspotIfPossible(trigger: .automatic(reason: "Trusted Wi-Fi disconnected"))
                 }
             } else if settings.isGlobalFailoverEnabled, previousSSID != nil {
                 let result = handle(.untrustedWiFiDisconnected)
                 if result.status == .switching {
-                    await joinHotspotIfPossible(reason: "Wi-Fi disconnected in global mode")
+                    await joinHotspotIfPossible(trigger: .automatic(reason: "Wi-Fi disconnected in global mode"))
                 }
             }
         } catch {
@@ -380,12 +380,35 @@ public final class AppModel: ObservableObject {
         return false
     }
 
-    private func joinHotspotIfPossible(reason: String) async {
-        guard let hotspot = settings.hotspotSSID, settings.isSetupVerified || reason.contains("Manual") else {
-            record(.hotspotJoinFailed, "Hotspot is not verified")
+    private enum JoinTrigger {
+        case automatic(reason: String)   // requires verified setup
+        case manual                      // user-initiated; bypasses verification
+        case retry                       // requires verified setup
+
+        var logReason: String {
+            switch self {
+            case .automatic(let reason): reason
+            case .manual: "Manual hotspot attempt"
+            case .retry: "Retry hotspot attempt"
+            }
+        }
+
+        var bypassesVerification: Bool {
+            if case .manual = self { return true }
+            return false
+        }
+    }
+
+    private func joinHotspotIfPossible(trigger: JoinTrigger) async {
+        guard let hotspot = settings.hotspotSSID else {
+            record(.hotspotJoinFailed, "No hotspot target is configured")
             return
         }
-        record(.hotspotJoinStarted, "\(reason): \(hotspot)")
+        guard settings.isSetupVerified || trigger.bypassesVerification else {
+            record(.hotspotJoinFailed, "Hotspot setup is not verified")
+            return
+        }
+        record(.hotspotJoinStarted, "\(trigger.logReason): \(hotspot)")
         do {
             try await networkAdapter.join(ssid: hotspot)
             guard await confirmJoin(to: hotspot) else {
@@ -536,7 +559,7 @@ public final class AppModel: ObservableObject {
     private func retryHotspotJoin() async {
         retryTask = nil
         handle(.retryTimerFired)
-        await joinHotspotIfPossible(reason: "Retry hotspot attempt")
+        await joinHotspotIfPossible(trigger: .retry)
     }
 
     private func cancelRetry() {

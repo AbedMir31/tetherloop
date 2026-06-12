@@ -1243,4 +1243,86 @@ final class ViewModelTests: XCTestCase {
 
         XCTAssertEqual(notifications.notifications.last?.title, "TetherLoop stopped retrying")
     }
+
+    func testAutomaticJoinRequiresVerifiedSetup() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: false,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        // Poll on "Home" to record previousSSID, then drop the network and poll again.
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+
+        // With unverified setup the state machine never enters .switching, so the
+        // automatic failover path never reaches the hotspot join: no join is attempted.
+        XCTAssertTrue(network.joinAttempts.isEmpty)
+    }
+
+    func testManualTryBypassesVerification() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: false,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Phone")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        model.tryHotspotNow()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(network.joinAttempts, ["Phone"])
+    }
+
+    func testJoinWithoutHotspotRecordsConfigurationMessage() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: nil,
+            isSetupVerified: false
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        model.tryHotspotNow()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(network.joinAttempts.isEmpty)
+        XCTAssertTrue(model.diagnostics.contains { $0.message.contains("No hotspot target") })
+    }
 }
