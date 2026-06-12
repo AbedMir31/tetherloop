@@ -333,6 +333,112 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(store.load().launchAtLogin)
     }
 
+    func testPausedProtectionDoesNotJoinHotspotOnTrustedDisconnect() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        model.pauseProtection()
+        network.current = nil
+        await model.pollNetwork()
+
+        XCTAssertTrue(network.joinAttempts.isEmpty)
+        XCTAssertEqual(model.status, .paused)
+    }
+
+    func testDisabledProtectionDoesNotJoinHotspotOnTrustedDisconnect() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: false
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+
+        XCTAssertTrue(network.joinAttempts.isEmpty)
+        XCTAssertNotEqual(model.status, .switching)
+        XCTAssertNotEqual(model.status, .onHotspot)
+    }
+
+    func testProtectNowArmsFailoverEvenWhenToggleIsOff() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: false
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        // Poll once to record previousSSID = "Home", then manually arm protection.
+        await model.pollNetwork()
+        model.protectNow()
+        XCTAssertEqual(model.status, .protected)
+        network.current = nil
+        await model.pollNetwork()
+
+        XCTAssertEqual(network.joinAttempts, ["Phone"])
+    }
+
+    func testPausedGlobalFailoverDoesNotJoinHotspot() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true,
+            isGlobalFailoverEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Cafe")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher()
+        )
+
+        await model.pollNetwork()
+        model.pauseProtection()
+        network.current = nil
+        await model.pollNetwork()
+
+        XCTAssertTrue(network.joinAttempts.isEmpty)
+        XCTAssertEqual(model.status, .paused)
+    }
+
     func testRefreshNetworkChoicesIncludesRememberedCurrentAndSavedNetworks() async {
         let store = InMemorySettingsStore(TetherLoopSettings(
             trustedSSIDs: ["Home"],

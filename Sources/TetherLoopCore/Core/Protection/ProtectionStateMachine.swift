@@ -82,13 +82,13 @@ public struct ProtectionStateMachine: Equatable {
             }
 
         case .trustedWiFiDisconnected(let ssid):
-            guard canProtect, status != .paused else { break }
+            guard canProtect, status == .protected else { break }
             status = .switching
             retryAttempt = 0
             intents.append(.record(.trustedNetworkLost, "Trusted Wi-Fi disconnected: \(ssid)"))
 
         case .untrustedWiFiDisconnected:
-            guard canProtect, settings.isGlobalFailoverEnabled, status != .paused else { break }
+            guard canProtect, settings.isGlobalFailoverEnabled, status == .protected else { break }
             status = .switching
             retryAttempt = 0
             intents.append(.record(.trustedNetworkLost, "Wi-Fi disconnected in global mode"))
@@ -117,11 +117,16 @@ public struct ProtectionStateMachine: Equatable {
                 intents.append(.scheduleRetry(delay))
             }
 
-        case .retryTimerFired, .userTryNow:
+        case .userTryNow:
             guard canProtect else {
                 status = .unconfigured
                 break
             }
+            status = .switching
+            intents.append(.record(.hotspotJoinStarted, "Retrying hotspot join"))
+
+        case .retryTimerFired:
+            guard canProtect, status != .paused else { break }
             status = .switching
             intents.append(.record(.hotspotJoinStarted, "Retrying hotspot join"))
 

@@ -266,11 +266,15 @@ public final class AppModel: ObservableObject {
 
             if let previousSSID, settings.trustedSSIDs.contains(previousSSID) {
                 lastTrustedSSID = previousSSID
-                handle(.trustedWiFiDisconnected(previousSSID))
-                await joinHotspotIfPossible(reason: "Trusted Wi-Fi disconnected")
+                let result = handle(.trustedWiFiDisconnected(previousSSID))
+                if result.status == .switching {
+                    await joinHotspotIfPossible(reason: "Trusted Wi-Fi disconnected")
+                }
             } else if settings.isGlobalFailoverEnabled, previousSSID != nil {
-                handle(.untrustedWiFiDisconnected)
-                await joinHotspotIfPossible(reason: "Wi-Fi disconnected in global mode")
+                let result = handle(.untrustedWiFiDisconnected)
+                if result.status == .switching {
+                    await joinHotspotIfPossible(reason: "Wi-Fi disconnected in global mode")
+                }
             }
         } catch {
             record(.networkError, "Network poll failed: \(error.localizedDescription)")
@@ -335,10 +339,12 @@ public final class AppModel: ObservableObject {
         status = stateMachine.status
     }
 
-    private func handle(_ event: ProtectionEvent) {
+    @discardableResult
+    private func handle(_ event: ProtectionEvent) -> ProtectionTransitionResult {
         let result = stateMachine.handle(event)
         status = result.status
         apply(intents: result.intents)
+        return result
     }
 
     private func apply(intents: [ProtectionIntent]) {

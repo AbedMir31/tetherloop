@@ -52,6 +52,38 @@ final class ProtectionStateMachineTests: XCTestCase {
         XCTAssertEqual(result.status, .onHotspot)
     }
 
+    func testPausedMachineReceivingTrustedDisconnectStaysPaused() {
+        var machine = ProtectionStateMachine(settings: verifiedSettings())
+        _ = machine.handle(.userPause)
+
+        let result = machine.handle(.trustedWiFiDisconnected("Home"))
+
+        XCTAssertEqual(result.status, .paused)
+        XCTAssertEqual(result.intents, [.none])
+    }
+
+    func testMonitoringMachineReceivingTrustedDisconnectStaysMonitoring() {
+        var machine = ProtectionStateMachine(settings: TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: false
+        ))
+
+        let result = machine.handle(.trustedWiFiDisconnected("Home"))
+
+        XCTAssertEqual(result.status, .monitoring)
+    }
+
+    func testPausedMachineReceivingRetryTimerFiredStaysPaused() {
+        var machine = ProtectionStateMachine(settings: verifiedSettings())
+        _ = machine.handle(.userPause)
+
+        let result = machine.handle(.retryTimerFired)
+
+        XCTAssertEqual(result.status, .paused)
+    }
+
     private func verifiedSettings() -> TetherLoopSettings {
         TetherLoopSettings(
             trustedSSIDs: ["Home"],
