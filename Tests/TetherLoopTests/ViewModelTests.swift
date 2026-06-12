@@ -1421,4 +1421,61 @@ final class ViewModelTests: XCTestCase {
 
         XCTAssertEqual(model.currentSSID, "Home")
     }
+
+    func testProtectionActiveTracksManualProtectAndPause() {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: false
+        ))
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        XCTAssertEqual(model.status, .monitoring)
+        XCTAssertFalse(model.isProtectionActive)
+
+        model.protectNow()
+        XCTAssertEqual(model.status, .protected)
+        XCTAssertTrue(model.isProtectionActive)
+
+        model.pauseProtection()
+        XCTAssertEqual(model.status, .paused)
+        XCTAssertFalse(model.isProtectionActive)
+    }
+
+    func testProtectionActiveTrueWhileOnHotspot() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+
+        XCTAssertEqual(model.status, .onHotspot)
+        XCTAssertTrue(model.isProtectionActive)
+    }
 }

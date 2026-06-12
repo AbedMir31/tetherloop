@@ -30,7 +30,7 @@ public struct TetherLoopMenu: View {
         Button("Protect Now", systemImage: "shield") {
             model.protectNow()
         }
-        .disabled(!model.settings.isSetupVerified)
+        .disabled(!model.settings.isSetupVerified || model.isProtectionActive)
 
         Button("Pause Protection", systemImage: "pause.circle") {
             model.pauseProtection()

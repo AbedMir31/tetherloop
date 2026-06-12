@@ -123,6 +123,19 @@ public final class AppModel: ObservableObject {
         return settings.trustedSSIDs.contains(currentSSID)
     }
 
+    /// True when protection is already engaged on a network — the states where
+    /// "Protect Now" would be a no-op (`.protected`) or would wrongly relabel the
+    /// status (`.switching`, `.onHotspot`). `.monitoring`, `.paused`, and `.failed`
+    /// are intentionally excluded: arming / re-arming protection is meaningful there.
+    public var isProtectionActive: Bool {
+        switch status {
+        case .protected, .switching, .onHotspot:
+            return true
+        case .unconfigured, .monitoring, .paused, .failed:
+            return false
+        }
+    }
+
     public var setupSummary: String {
         guard let hotspot = settings.hotspotSSID, !settings.trustedSSIDs.isEmpty else {
             return "Setup incomplete"
