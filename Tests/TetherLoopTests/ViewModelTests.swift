@@ -63,7 +63,8 @@ final class ViewModelTests: XCTestCase {
         await model.runSetupVerificationTest()
 
         XCTAssertTrue(model.settings.isSetupVerified)
-        XCTAssertEqual(network.joinedSSIDs, ["Phone", "Home"])
+        XCTAssertEqual(network.joinedSSIDs, ["Phone"])
+        XCTAssertEqual(model.postVerificationReturn, .offered(originalSSID: "Home"))
     }
 
     func testSetupVerificationFailureStaysUnverified() async {
@@ -896,5 +897,181 @@ final class ViewModelTests: XCTestCase {
         await model.pollNetwork()
 
         XCTAssertEqual(model.status, .onHotspot)
+    }
+
+    func testVerificationDoesNotAutoReturnToOriginalNetwork() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.runSetupVerificationTest()
+
+        XCTAssertEqual(network.current, "Phone")
+        XCTAssertEqual(model.postVerificationReturn, .offered(originalSSID: "Home"))
+    }
+
+    func testAcceptingReturnOfferJoinsOriginalNetwork() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.runSetupVerificationTest()
+        await model.acceptPostVerificationReturn()
+
+        XCTAssertEqual(network.joinedSSIDs.last, "Home")
+        XCTAssertNil(model.postVerificationReturn)
+    }
+
+    func testFailedReturnOfferLogsErrorNotSuccess() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        network.joinResults = [
+            .success(()),
+            .failure(NetworkAdapterError.commandFailed("boom"))
+        ]
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.runSetupVerificationTest()
+        let countBeforeAccept = model.diagnostics.count
+        await model.acceptPostVerificationReturn()
+
+        let afterOffer = model.diagnostics.dropFirst(countBeforeAccept)
+        XCTAssertFalse(afterOffer.contains { $0.message.contains("Returned to Wi-Fi") })
+        XCTAssertTrue(afterOffer.contains { $0.message.contains("Could not return") })
+    }
+
+    func testVerificationFromNoWiFiSetsStayedOnHotspot() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: false
+        ))
+        let network = FakeNetworkAdapter(currentSSID: nil)
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.runSetupVerificationTest()
+
+        XCTAssertEqual(model.postVerificationReturn, .stayedOnHotspot)
+    }
+
+    func testOnlyFirstRetryFailureNotifies() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        network.joinError = NetworkAdapterError.commandFailed("down")
+        let notifications = RecordingNotificationDispatcher()
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: notifications,
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        model.pauseProtection()
+
+        let joinFailureNotifications = notifications.notifications.filter {
+            $0.title == "TetherLoop could not join hotspot"
+        }
+        XCTAssertEqual(joinFailureNotifications.count, 1)
+    }
+
+    func testRetryExhaustionSendsFinalNotification() async throws {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        network.joinError = NetworkAdapterError.commandFailed("down")
+        let notifications = RecordingNotificationDispatcher()
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: notifications,
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            retryPolicy: RetryPolicy(delays: [0]),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(notifications.notifications.last?.title, "TetherLoop stopped retrying")
     }
 }

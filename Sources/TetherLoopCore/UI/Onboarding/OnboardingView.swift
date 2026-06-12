@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct OnboardingView: View {
     @ObservedObject private var model: AppModel
+    @State private var isConfirmingTest = false
 
     public init(model: AppModel) {
         self.model = model
@@ -66,8 +67,9 @@ public struct OnboardingView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
                         Button("Run Verification Test", systemImage: "checkmark.seal") {
-                            Task { await model.runSetupVerificationTest() }
+                            isConfirmingTest = true
                         }
+                        .disabled(model.settings.hotspotSSID == nil)
                         Text(model.settings.isSetupVerified ? "Protection is verified." : "Run a real hotspot test before relying on protection.")
                             .font(.caption)
                             .foregroundStyle(model.settings.isSetupVerified ? .green : .secondary)
@@ -86,6 +88,37 @@ public struct OnboardingView: View {
             Spacer()
         }
         .padding(28)
+        .confirmationDialog(
+            "Test failover to \(model.settings.hotspotSSID ?? "your hotspot")?",
+            isPresented: $isConfirmingTest
+        ) {
+            Button("Switch and Test") {
+                Task { await model.runSetupVerificationTest() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your Mac will briefly leave the current Wi-Fi network and join the hotspot. Active downloads or calls may be interrupted. TetherLoop offers to return to your Wi-Fi afterwards.")
+        }
+        .alert(
+            "Verification succeeded",
+            isPresented: Binding(
+                get: { model.postVerificationReturn != nil },
+                set: { if !$0 { model.dismissPostVerificationReturn() } }
+            )
+        ) {
+            if case .offered = model.postVerificationReturn {
+                Button("Return to Wi-Fi") { Task { await model.acceptPostVerificationReturn() } }
+                Button("Stay on Hotspot", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: {
+            if case .offered(let ssid) = model.postVerificationReturn {
+                Text("Your hotspot works. Return to \(ssid) now?")
+            } else {
+                Text("Your hotspot works. You were not on Wi-Fi before the test, so TetherLoop stayed on the hotspot. Use Return to Wi-Fi in the menu when ready.")
+            }
+        }
     }
 
     private func setupCard<Content: View>(

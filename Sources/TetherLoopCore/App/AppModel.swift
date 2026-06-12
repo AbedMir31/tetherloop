@@ -4,6 +4,11 @@ import Foundation
 
 @MainActor
 public final class AppModel: ObservableObject {
+    public enum PostVerificationReturn: Equatable {
+        case offered(originalSSID: String)
+        case stayedOnHotspot          // test started while not on Wi-Fi
+    }
+
     @Published public private(set) var settings: TetherLoopSettings
     @Published public private(set) var status: ProtectionStatus = .unconfigured
     @Published public private(set) var diagnostics: [DiagnosticEvent] = []
@@ -12,6 +17,7 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var isRefreshingNetworks = false
     @Published public private(set) var networkChoicesError: String?
     @Published public private(set) var needsLocationPermission = false
+    @Published public private(set) var postVerificationReturn: PostVerificationReturn?
     private let settingsStore: SettingsStore
     private let networkAdapter: NetworkAdapter
     private let powerController: PowerAssertionControlling
@@ -26,6 +32,7 @@ public final class AppModel: ObservableObject {
     private var lastTrustedSSID: String?
     private var monitorTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
+    private var hasNotifiedJoinFailure = false
 
     public init(
         settingsStore: SettingsStore,
@@ -35,6 +42,7 @@ public final class AppModel: ObservableObject {
         diagnosticsStore: DiagnosticLogStoring,
         notificationDispatcher: NotificationDispatching,
         locationAuthorization: LocationAuthorizing,
+        retryPolicy: RetryPolicy = RetryPolicy(),
         joinConfirmationAttempts: Int = 10,
         joinConfirmationDelay: Duration = .seconds(1)
     ) {
@@ -49,7 +57,7 @@ public final class AppModel: ObservableObject {
         self.joinConfirmationDelay = joinConfirmationDelay
         let loaded = settingsStore.load()
         self.settings = loaded
-        self.stateMachine = ProtectionStateMachine(settings: loaded)
+        self.stateMachine = ProtectionStateMachine(settings: loaded, retryPolicy: retryPolicy)
         self.status = stateMachine.status
         self.diagnostics = diagnosticsStore.loadEvents()
     }
@@ -221,10 +229,12 @@ public final class AppModel: ObservableObject {
     }
 
     public func protectNow() {
+        hasNotifiedJoinFailure = false
         handle(.userProtectNow)
     }
 
     public func pauseProtection() {
+        hasNotifiedJoinFailure = false
         cancelRetry()
         handle(.userPause)
     }
@@ -238,7 +248,29 @@ public final class AppModel: ObservableObject {
         await verifyHotspotSetup()
     }
 
+    public func acceptPostVerificationReturn() async {
+        guard case .offered(let original) = postVerificationReturn else { return }
+        postVerificationReturn = nil
+        do {
+            try await networkAdapter.join(ssid: original)
+            guard await confirmJoin(to: original) else {
+                record(.networkError, "Could not return to \(original): it never became the current network")
+                return
+            }
+            if settings.trustedSSIDs.contains(original) { lastTrustedSSID = original }
+            previousSSID = original
+            record(.manualAction, "Returned to Wi-Fi: \(original)")
+        } catch {
+            record(.networkError, "Could not return to \(original): \(error.localizedDescription)")
+        }
+    }
+
+    public func dismissPostVerificationReturn() {
+        postVerificationReturn = nil
+    }
+
     public func returnToWiFi() async {
+        hasNotifiedJoinFailure = false
         cancelRetry()
         handle(.userReturnToWiFi)
         guard let target = returnWiFiTarget() else {
@@ -357,19 +389,38 @@ public final class AppModel: ObservableObject {
         do {
             try await networkAdapter.join(ssid: hotspot)
             guard await confirmJoin(to: hotspot) else {
-                handle(.hotspotJoinFailed("Join command completed but \(hotspot) never became the current network"))
+                let message = "\(hotspot) did not become the current network"
+                notifyJoinFailure(hotspot: hotspot, message: message, result: handle(.hotspotJoinFailed("Join command completed but \(hotspot) never became the current network")))
                 record(.hotspotJoinFailed, "Could not confirm join to \(hotspot)")
-                notificationDispatcher.notify(title: "TetherLoop could not join hotspot", body: "\(hotspot) did not become the current network")
                 return
             }
             cancelRetry()
+            hasNotifiedJoinFailure = false
             handle(.hotspotJoinSucceeded(hotspot))
             record(.hotspotJoinSucceeded, "Joined \(hotspot)")
             notificationDispatcher.notify(title: "TetherLoop switched to hotspot", body: hotspot)
         } catch {
-            handle(.hotspotJoinFailed(error.localizedDescription))
-            record(.hotspotJoinFailed, "Could not join \(hotspot): \(error.localizedDescription)")
-            notificationDispatcher.notify(title: "TetherLoop could not join hotspot", body: error.localizedDescription)
+            let message = error.localizedDescription
+            notifyJoinFailure(hotspot: hotspot, message: message, result: handle(.hotspotJoinFailed(message)))
+            record(.hotspotJoinFailed, "Could not join \(hotspot): \(message)")
+        }
+    }
+
+    private func notifyJoinFailure(hotspot: String, message: String, result: ProtectionTransitionResult) {
+        let willRetry = result.intents.contains {
+            if case .scheduleRetry = $0 { return true } else { return false }
+        }
+        if !hasNotifiedJoinFailure {
+            hasNotifiedJoinFailure = true
+            notificationDispatcher.notify(
+                title: "TetherLoop could not join hotspot",
+                body: willRetry ? "\(message) — retrying automatically." : message
+            )
+        } else if !willRetry {
+            notificationDispatcher.notify(
+                title: "TetherLoop stopped retrying",
+                body: "Could not join \(hotspot). Use Try Hotspot Now after checking the hotspot."
+            )
         }
     }
 
@@ -396,11 +447,11 @@ public final class AppModel: ObservableObject {
             notificationDispatcher.notify(title: "TetherLoop setup verified", body: hotspot)
 
             if let originalSSID, originalSSID != hotspot {
-                try? await networkAdapter.join(ssid: originalSSID)
-                if settings.trustedSSIDs.contains(originalSSID) {
-                    lastTrustedSSID = originalSSID
-                }
-                record(.manualAction, "Returned to Wi-Fi: \(originalSSID)")
+                postVerificationReturn = .offered(originalSSID: originalSSID)
+                record(.manualAction, "Setup test complete; offering return to \(originalSSID)")
+            } else {
+                postVerificationReturn = .stayedOnHotspot
+                record(.manualAction, "Setup test complete; still on \(hotspot)")
             }
         } catch {
             updateSettings { $0.isSetupVerified = false }
