@@ -44,6 +44,7 @@ public final class FakeNetworkAdapter: NetworkAdapter {
     public private(set) var joinAttempts: [String] = []
     public private(set) var joinedSSIDs: [String] = []
     public var associatedWithoutSSID = false
+    public var joinSetsCurrent = true
 
     public init(currentSSID: String? = nil, preferredSSIDs: [String] = []) {
         self.current = currentSSID
@@ -71,7 +72,7 @@ public final class FakeNetworkAdapter: NetworkAdapter {
             switch result {
             case .success:
                 joinedSSIDs.append(ssid)
-                current = ssid
+                if joinSetsCurrent { current = ssid }
                 return
             case .failure(let error):
                 throw error
@@ -82,6 +83,6 @@ public final class FakeNetworkAdapter: NetworkAdapter {
             throw joinError
         }
         joinedSSIDs.append(ssid)
-        current = ssid
+        if joinSetsCurrent { current = ssid }
     }
 }

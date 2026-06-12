@@ -71,7 +71,10 @@ public final class NetworkSetupClient {
 
     @MainActor
     public func join(ssid: String, device: String) async throws {
-        _ = try await runner.run(executable, arguments: ["-setairportnetwork", device, ssid])
+        let output = try await runner.run(executable, arguments: ["-setairportnetwork", device, ssid])
+        if let failure = Self.parseJoinFailure(from: output) {
+            throw NetworkAdapterError.commandFailed(failure)
+        }
     }
 
     public static func parseWiFiDevice(from output: String) -> String? {
@@ -96,6 +99,17 @@ public final class NetworkSetupClient {
         }
         let ssid = trimmed[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         return ssid.isEmpty ? nil : ssid
+    }
+
+    public static func parseJoinFailure(from output: String) -> String? {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let failureMarkers = ["failed to join", "could not find network", "error:"]
+        let lowered = trimmed.lowercased()
+        for marker in failureMarkers where lowered.contains(marker) {
+            return trimmed
+        }
+        return nil
     }
 
     public static func parsePreferredSSIDs(from output: String) -> [String] {

@@ -19,6 +19,8 @@ public final class AppModel: ObservableObject {
     private let diagnosticsStore: DiagnosticLogStoring
     private let notificationDispatcher: NotificationDispatching
     private let locationAuthorization: LocationAuthorizing
+    private let joinConfirmationAttempts: Int
+    private let joinConfirmationDelay: Duration
     private var stateMachine: ProtectionStateMachine
     private var previousSSID: String?
     private var lastTrustedSSID: String?
@@ -32,7 +34,9 @@ public final class AppModel: ObservableObject {
         loginItemController: LoginItemControlling,
         diagnosticsStore: DiagnosticLogStoring,
         notificationDispatcher: NotificationDispatching,
-        locationAuthorization: LocationAuthorizing
+        locationAuthorization: LocationAuthorizing,
+        joinConfirmationAttempts: Int = 10,
+        joinConfirmationDelay: Duration = .seconds(1)
     ) {
         self.settingsStore = settingsStore
         self.networkAdapter = networkAdapter
@@ -41,6 +45,8 @@ public final class AppModel: ObservableObject {
         self.diagnosticsStore = diagnosticsStore
         self.notificationDispatcher = notificationDispatcher
         self.locationAuthorization = locationAuthorization
+        self.joinConfirmationAttempts = joinConfirmationAttempts
+        self.joinConfirmationDelay = joinConfirmationDelay
         let loaded = settingsStore.load()
         self.settings = loaded
         self.stateMachine = ProtectionStateMachine(settings: loaded)
@@ -243,6 +249,12 @@ public final class AppModel: ObservableObject {
         record(.manualAction, "Return to Wi-Fi requested: \(target)")
         do {
             try await networkAdapter.join(ssid: target)
+            guard await confirmJoin(to: target) else {
+                let message = "Join command completed but \(target) never became the current network"
+                handle(.trustedWiFiJoinFailed(target, message))
+                notificationDispatcher.notify(title: "TetherLoop could not return to Wi-Fi", body: message)
+                return
+            }
             previousSSID = target
             lastTrustedSSID = target
             handle(.trustedWiFiConnected(target))
@@ -315,6 +327,27 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    private func confirmJoin(to target: String) async -> Bool {
+        for attempt in 0..<joinConfirmationAttempts {
+            if let state = try? await networkAdapter.currentNetwork() {
+                switch state {
+                case .associated(let ssid?) where ssid == target:
+                    return true
+                case .associated(nil):
+                    // SSID unreadable (no Location permission): we cannot disprove
+                    // the join; trust the command result rather than failing falsely.
+                    return true
+                default:
+                    break
+                }
+            }
+            if attempt < joinConfirmationAttempts - 1 {
+                try? await Task.sleep(for: joinConfirmationDelay)
+            }
+        }
+        return false
+    }
+
     private func joinHotspotIfPossible(reason: String) async {
         guard let hotspot = settings.hotspotSSID, settings.isSetupVerified || reason.contains("Manual") else {
             record(.hotspotJoinFailed, "Hotspot is not verified")
@@ -323,6 +356,12 @@ public final class AppModel: ObservableObject {
         record(.hotspotJoinStarted, "\(reason): \(hotspot)")
         do {
             try await networkAdapter.join(ssid: hotspot)
+            guard await confirmJoin(to: hotspot) else {
+                handle(.hotspotJoinFailed("Join command completed but \(hotspot) never became the current network"))
+                record(.hotspotJoinFailed, "Could not confirm join to \(hotspot)")
+                notificationDispatcher.notify(title: "TetherLoop could not join hotspot", body: "\(hotspot) did not become the current network")
+                return
+            }
             cancelRetry()
             handle(.hotspotJoinSucceeded(hotspot))
             record(.hotspotJoinSucceeded, "Joined \(hotspot)")
@@ -345,6 +384,12 @@ public final class AppModel: ObservableObject {
 
         do {
             try await networkAdapter.join(ssid: hotspot)
+            guard await confirmJoin(to: hotspot) else {
+                updateSettings { $0.isSetupVerified = false }
+                record(.hotspotJoinFailed, "Setup verification failed: \(hotspot) never became the current network")
+                notificationDispatcher.notify(title: "TetherLoop setup failed", body: "\(hotspot) did not become the current network")
+                return
+            }
             updateSettings { $0.isSetupVerified = true }
             handle(.settingsChanged)
             record(.setupVerified, "Setup verification completed")
