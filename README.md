@@ -110,6 +110,7 @@ TetherLoop is intentionally narrow in Free V1.
 - Xcode command line tools or a Swift 6 toolchain
 - A hotspot that has already been connected to from macOS
 - At least one trusted Wi-Fi network configured in TetherLoop
+- Location Services access for TetherLoop (macOS hides Wi-Fi network names from apps without it; TetherLoop reads the network name only)
 
 ## Install
 
@@ -144,6 +145,8 @@ Run the app:
 swift run TetherLoop
 ```
 
+Note: unbundled processes launched via `swift run` cannot trigger the macOS Location Services permission prompt, so trusted-network detection will not work from the command line. Use the packaged app from `scripts/package-app.sh` for the full Location-gated SSID flow.
+
 Build a local `.app` bundle:
 
 ```sh
@@ -161,12 +164,13 @@ swift run GenerateScreenshots
 
 1. Connect to your hotspot once using macOS System Settings so macOS owns the saved credentials.
 2. Launch TetherLoop.
-3. Open **Setup** from the menu bar app.
-4. Add the Wi-Fi networks that should trigger protection when they disconnect.
-5. Choose the hotspot target TetherLoop should join.
-6. Run the verification test.
-7. Enable network protection.
-8. Optionally enable idle-sleep prevention and launch at login.
+3. Grant Location access when prompted, or open **System Settings > Privacy & Security > Location Services** and enable TetherLoop. This is required for macOS to reveal the current Wi-Fi network name to the app.
+4. Open **Setup** from the menu bar app.
+5. Add the Wi-Fi networks that should trigger protection when they disconnect.
+6. Choose the hotspot target TetherLoop should join.
+7. Run the verification test.
+8. Enable network protection.
+9. Optionally enable idle-sleep prevention and launch at login.
 
 If setup verification fails, TetherLoop leaves protection disabled and writes a local diagnostic event so you can inspect what happened.
 

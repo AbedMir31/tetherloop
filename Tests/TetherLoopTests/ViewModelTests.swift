@@ -487,6 +487,110 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(store.load().trustedSSIDs, ["Home"])
     }
 
+    func testAssociatedWithoutSSIDDoesNotTriggerFailover() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: false)
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        network.associatedWithoutSSID = true
+        await model.pollNetwork()
+
+        XCTAssertTrue(network.joinAttempts.isEmpty)
+        XCTAssertTrue(model.needsLocationPermission)
+        XCTAssertEqual(model.status, .protected)
+    }
+
+    func testUnreadableSSIDThenRealDisconnectStillFailsOver() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: false)
+        )
+
+        // Poll once on trusted SSID, then simulate unreadable state, then real disconnect.
+        await model.pollNetwork()
+        network.current = nil
+        network.associatedWithoutSSID = true
+        await model.pollNetwork()   // unreadable — no failover, previousSSID preserved
+        network.associatedWithoutSSID = false
+        await model.pollNetwork()   // real disconnect
+
+        XCTAssertEqual(network.joinAttempts, ["Phone"])
+    }
+
+    func testReadableSSIDClearsLocationPermissionFlag() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: nil)
+        network.associatedWithoutSSID = true
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: false)
+        )
+
+        await model.pollNetwork()
+        XCTAssertTrue(model.needsLocationPermission)
+
+        network.current = "Home"
+        network.associatedWithoutSSID = false
+        await model.pollNetwork()
+
+        XCTAssertFalse(model.needsLocationPermission)
+    }
+
+    func testRequestLocationPermissionCallsController() {
+        let store = InMemorySettingsStore()
+        let recordingLocation = RecordingLocationAuthorization(isAuthorized: false)
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: recordingLocation
+        )
+
+        model.requestLocationPermission()
+
+        XCTAssertEqual(recordingLocation.requestCount, 1)
+    }
+
     func testRefreshNetworkChoicesDoesNotDefaultHotspotAsTrustedNetwork() async {
         let store = InMemorySettingsStore(TetherLoopSettings(
             hotspotSSID: "Phone"

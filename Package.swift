@@ -16,7 +16,9 @@ let package = Package(
         .target(
             name: "TetherLoopCore",
             linkerSettings: [
-                .linkedFramework("IOKit")
+                .linkedFramework("IOKit"),
+                .linkedFramework("CoreWLAN"),
+                .linkedFramework("CoreLocation")
             ]
         ),
         .executableTarget(

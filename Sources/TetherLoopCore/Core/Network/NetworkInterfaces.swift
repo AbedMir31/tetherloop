@@ -1,10 +1,22 @@
 import Foundation
 
+public enum WiFiNetworkState: Equatable, Sendable {
+    case disconnected
+    case associated(ssid: String?)   // ssid nil = associated but unreadable (no Location permission)
+}
+
 @MainActor
 public protocol NetworkAdapter {
-    func currentSSID() async throws -> String?
+    func currentNetwork() async throws -> WiFiNetworkState
     func preferredSSIDs() async throws -> [String]
     func join(ssid: String) async throws
+}
+
+public extension NetworkAdapter {
+    func currentSSID() async throws -> String? {
+        if case .associated(let ssid) = try await currentNetwork() { return ssid }
+        return nil
+    }
 }
 
 public enum NetworkAdapterError: Error, LocalizedError, Equatable {
@@ -31,10 +43,16 @@ public final class FakeNetworkAdapter: NetworkAdapter {
     public var joinResults: [Result<Void, Error>] = []
     public private(set) var joinAttempts: [String] = []
     public private(set) var joinedSSIDs: [String] = []
+    public var associatedWithoutSSID = false
 
     public init(currentSSID: String? = nil, preferredSSIDs: [String] = []) {
         self.current = currentSSID
         self.preferred = preferredSSIDs
+    }
+
+    public func currentNetwork() async throws -> WiFiNetworkState {
+        if let current { return .associated(ssid: current) }
+        return associatedWithoutSSID ? .associated(ssid: nil) : .disconnected
     }
 
     public func currentSSID() async throws -> String? {

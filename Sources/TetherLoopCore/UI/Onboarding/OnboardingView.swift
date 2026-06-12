@@ -23,6 +23,23 @@ public struct OnboardingView: View {
 
             Divider()
 
+            if model.needsLocationPermission {
+                HStack(spacing: 10) {
+                    Image(systemName: "location.slash")
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Location access needed").font(.headline)
+                        Text("macOS hides Wi-Fi network names from apps without Location access. TetherLoop only reads the network name; it never tracks location.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Grant Access") { model.requestLocationPermission() }
+                }
+                .padding(12)
+                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            }
+
             HStack(alignment: .top, spacing: 18) {
                 setupCard(
                     step: "1",

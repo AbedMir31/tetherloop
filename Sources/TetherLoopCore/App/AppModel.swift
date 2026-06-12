@@ -11,12 +11,14 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var currentSSID: String?
     @Published public private(set) var isRefreshingNetworks = false
     @Published public private(set) var networkChoicesError: String?
+    @Published public private(set) var needsLocationPermission = false
     private let settingsStore: SettingsStore
     private let networkAdapter: NetworkAdapter
     private let powerController: PowerAssertionControlling
     private let loginItemController: LoginItemControlling
     private let diagnosticsStore: DiagnosticLogStoring
     private let notificationDispatcher: NotificationDispatching
+    private let locationAuthorization: LocationAuthorizing
     private var stateMachine: ProtectionStateMachine
     private var previousSSID: String?
     private var lastTrustedSSID: String?
@@ -29,7 +31,8 @@ public final class AppModel: ObservableObject {
         powerController: PowerAssertionControlling,
         loginItemController: LoginItemControlling,
         diagnosticsStore: DiagnosticLogStoring,
-        notificationDispatcher: NotificationDispatching
+        notificationDispatcher: NotificationDispatching,
+        locationAuthorization: LocationAuthorizing = RecordingLocationAuthorization(isAuthorized: true)
     ) {
         self.settingsStore = settingsStore
         self.networkAdapter = networkAdapter
@@ -37,6 +40,7 @@ public final class AppModel: ObservableObject {
         self.loginItemController = loginItemController
         self.diagnosticsStore = diagnosticsStore
         self.notificationDispatcher = notificationDispatcher
+        self.locationAuthorization = locationAuthorization
         let loaded = settingsStore.load()
         self.settings = loaded
         self.stateMachine = ProtectionStateMachine(settings: loaded)
@@ -51,7 +55,8 @@ public final class AppModel: ObservableObject {
             powerController: SystemPowerAssertionController(),
             loginItemController: SystemLoginItemController(),
             diagnosticsStore: FileDiagnosticLogStore(),
-            notificationDispatcher: UserNotificationDispatcher()
+            notificationDispatcher: UserNotificationDispatcher(),
+            locationAuthorization: SystemLocationAuthorization()
         )
     }
 
@@ -80,7 +85,8 @@ public final class AppModel: ObservableObject {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: logStore,
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
     }
 
@@ -141,9 +147,16 @@ public final class AppModel: ObservableObject {
         var detectedCurrentSSID: String?
 
         do {
-            if let currentSSID = try await networkAdapter.currentSSID() {
-                detectedCurrentSSID = currentSSID
-                ssids.append(currentSSID)
+            let state = try await networkAdapter.currentNetwork()
+            switch state {
+            case .associated(let ssid?):
+                detectedCurrentSSID = ssid
+                ssids.append(ssid)
+                needsLocationPermission = false
+            case .associated(nil):
+                needsLocationPermission = true
+            case .disconnected:
+                break
             }
         } catch {
             if firstError == nil {
@@ -193,6 +206,11 @@ public final class AppModel: ObservableObject {
         } catch {
             record(.settingsChanged, "Launch at login update failed: \(error.localizedDescription)")
         }
+    }
+
+    public func requestLocationPermission() {
+        locationAuthorization.requestAuthorization()
+        record(.settingsChanged, "Requested Location access for Wi-Fi network detection")
     }
 
     public func protectNow() {
@@ -253,7 +271,22 @@ public final class AppModel: ObservableObject {
 
     public func pollNetwork() async {
         do {
-            let current = try await networkAdapter.currentSSID()
+            let state = try await networkAdapter.currentNetwork()
+            let current: String?
+            switch state {
+            case .associated(let ssid?):
+                needsLocationPermission = false
+                current = ssid
+            case .associated(nil):
+                // Associated but SSID unreadable: do NOT treat as a disconnect.
+                if !needsLocationPermission {
+                    needsLocationPermission = true
+                    record(.networkError, "Wi-Fi SSID is unreadable. Grant TetherLoop Location access in System Settings > Privacy & Security > Location Services so trusted-network detection can work.")
+                }
+                return
+            case .disconnected:
+                current = nil
+            }
             defer { previousSSID = current }
 
             if let current, settings.trustedSSIDs.contains(current) {

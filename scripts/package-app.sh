@@ -56,6 +56,10 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSLocationUsageDescription</key>
+  <string>TetherLoop reads the current Wi-Fi network name to detect when you leave a trusted network. It does not track or store your location.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>TetherLoop reads the current Wi-Fi network name to detect when you leave a trusted network. It does not track or store your location.</string>
 </dict>
 </plist>
 PLIST
