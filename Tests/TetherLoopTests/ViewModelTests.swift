@@ -711,4 +711,106 @@ final class ViewModelTests: XCTestCase {
 
         XCTAssertEqual(model.status, .protected)
     }
+
+    func testEnablingProtectionStartsSleepAssertionWhenSleepPreventionIsOn() {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: false,
+            isSleepPreventionEnabled: true
+        ))
+        let power = RecordingPowerAssertionController()
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: power,
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        model.setProtectionEnabled(true)
+
+        XCTAssertEqual(power.enableReasons.count, 1)
+    }
+
+    func testDisablingProtectionStopsSleepAssertion() {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true,
+            isSleepPreventionEnabled: true
+        ))
+        let power = RecordingPowerAssertionController()
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: power,
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        model.protectNow()
+        XCTAssertGreaterThanOrEqual(power.enableReasons.count, 1)
+
+        model.setProtectionEnabled(false)
+
+        XCTAssertGreaterThanOrEqual(power.disableCount, 1)
+    }
+
+    func testEnablingProtectionWithoutSleepPreventionDoesNotStartAssertion() {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: false,
+            isSleepPreventionEnabled: false
+        ))
+        let power = RecordingPowerAssertionController()
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: power,
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        model.setProtectionEnabled(true)
+
+        XCTAssertTrue(power.enableReasons.isEmpty)
+    }
+
+    func testTogglingSleepPreventionWhilePausedDoesNotStartAssertion() {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true,
+            isSleepPreventionEnabled: false
+        ))
+        let power = RecordingPowerAssertionController()
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: power,
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        model.pauseProtection()
+        XCTAssertEqual(model.status, .paused)
+
+        model.setSleepPreventionEnabled(true)
+
+        XCTAssertTrue(power.enableReasons.isEmpty)
+    }
 }

@@ -186,6 +186,7 @@ public final class AppModel: ObservableObject {
         }
         updateSettings { $0.isProtectionEnabled = enabled }
         handle(.settingsChanged)
+        applySleepPreventionIfNeeded()
         record(enabled ? .protectionEnabled : .protectionPaused, enabled ? "Protection enabled" : "Protection disabled")
     }
 
@@ -398,7 +399,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func applySleepPreventionIfNeeded() {
-        if settings.isSleepPreventionEnabled && settings.isProtectionEnabled {
+        if settings.isSleepPreventionEnabled && settings.isProtectionEnabled && status != .paused {
             try? powerController.enable(reason: "TetherLoop protection is active")
         } else {
             try? powerController.disable()
