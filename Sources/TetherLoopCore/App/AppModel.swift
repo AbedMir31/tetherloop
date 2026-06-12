@@ -32,7 +32,7 @@ public final class AppModel: ObservableObject {
         loginItemController: LoginItemControlling,
         diagnosticsStore: DiagnosticLogStoring,
         notificationDispatcher: NotificationDispatching,
-        locationAuthorization: LocationAuthorizing = RecordingLocationAuthorization(isAuthorized: true)
+        locationAuthorization: LocationAuthorizing
     ) {
         self.settingsStore = settingsStore
         self.networkAdapter = networkAdapter

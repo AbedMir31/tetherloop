@@ -11,7 +11,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         model.addTrustedSSID("Home")
@@ -32,7 +33,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         model.setHotspotSSID("New")
@@ -54,7 +56,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.runSetupVerificationTest()
@@ -77,7 +80,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.runSetupVerificationTest()
@@ -99,7 +103,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -124,7 +129,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.returnToWiFi()
@@ -151,7 +157,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.returnToWiFi()
@@ -180,7 +187,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -212,7 +220,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -242,7 +251,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -273,7 +283,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -305,7 +316,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -324,7 +336,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: login,
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         model.setLaunchAtLogin(true)
@@ -347,7 +360,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -373,7 +387,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -399,7 +414,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         // Poll once to record previousSSID = "Home", then manually arm protection.
@@ -427,7 +443,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.pollNetwork()
@@ -454,7 +471,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.refreshNetworkChoices()
@@ -477,7 +495,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.refreshNetworkChoices()
@@ -604,7 +623,8 @@ final class ViewModelTests: XCTestCase {
             powerController: RecordingPowerAssertionController(),
             loginItemController: RecordingLoginItemController(),
             diagnosticsStore: InMemoryDiagnosticLogStore(),
-            notificationDispatcher: RecordingNotificationDispatcher()
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
         )
 
         await model.refreshNetworkChoices()
