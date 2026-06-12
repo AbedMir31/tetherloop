@@ -16,11 +16,24 @@ public final class RecordingNotificationDispatcher: NotificationDispatching {
 }
 
 public final class UserNotificationDispatcher: NotificationDispatching {
-    public init() {}
+    private let bundleIdentifier: String?
+    private var hasRequestedAuthorization = false
+
+    public init(bundleIdentifier: String? = Bundle.main.bundleIdentifier) {
+        self.bundleIdentifier = bundleIdentifier
+    }
 
     public func notify(title: String, body: String) {
+        guard bundleIdentifier != nil else {
+            NSLog("TetherLoop notification skipped (no app bundle): %@ — %@", title, body)
+            return
+        }
+
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        if !hasRequestedAuthorization {
+            hasRequestedAuthorization = true
+            center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        }
 
         let content = UNMutableNotificationContent()
         content.title = title

@@ -10,4 +10,10 @@ final class NotificationDispatcherTests: XCTestCase {
         XCTAssertEqual(dispatcher.notifications.first?.title, "Switched")
         XCTAssertEqual(dispatcher.notifications.first?.body, "Phone")
     }
+
+    func testUnbundledDispatcherDoesNotCrashOnNotify() {
+        let dispatcher = UserNotificationDispatcher(bundleIdentifier: nil)
+
+        dispatcher.notify(title: "t", body: "b")
+    }
 }
