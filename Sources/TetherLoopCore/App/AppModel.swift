@@ -113,6 +113,16 @@ public final class AppModel: ObservableObject {
         return Self.sortedUniqueSSIDs(networkChoices + trustedSSIDs + savedHotspot)
     }
 
+    public var isOnHotspot: Bool {
+        guard let currentSSID, let hotspot = settings.hotspotSSID else { return false }
+        return currentSSID == hotspot
+    }
+
+    public var isOnTrustedWiFi: Bool {
+        guard let currentSSID else { return false }
+        return settings.trustedSSIDs.contains(currentSSID)
+    }
+
     public var setupSummary: String {
         guard let hotspot = settings.hotspotSSID, !settings.trustedSSIDs.isEmpty else {
             return "Setup incomplete"
@@ -332,6 +342,7 @@ public final class AppModel: ObservableObject {
             case .disconnected:
                 current = nil
             }
+            currentSSID = current
             defer { previousSSID = current }
 
             if let current, settings.trustedSSIDs.contains(current) {

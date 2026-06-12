@@ -1325,4 +1325,100 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(network.joinAttempts.isEmpty)
         XCTAssertTrue(model.diagnostics.contains { $0.message.contains("No hotspot target") })
     }
+
+    func testPollNetworkPublishesCurrentSSID() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.pollNetwork()
+        XCTAssertEqual(model.currentSSID, "Home")
+        XCTAssertTrue(model.isOnTrustedWiFi)
+        XCTAssertFalse(model.isOnHotspot)
+
+        // Second poll observes a disconnect. currentSSID is published from the
+        // polled value (nil) inside pollNetwork, BEFORE the failover join runs;
+        // the awaited join sets network.current = "Phone" but never republishes
+        // currentSSID, so the published value remains nil. Deterministic.
+        network.current = nil
+        await model.pollNetwork()
+        XCTAssertNil(model.currentSSID)
+        XCTAssertFalse(model.isOnTrustedWiFi)
+        XCTAssertFalse(model.isOnHotspot)
+    }
+
+    func testFailoverToHotspotUpdatesPlacementFlags() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true),
+            joinConfirmationAttempts: 2,
+            joinConfirmationDelay: .zero
+        )
+
+        await model.pollNetwork()
+        network.current = nil
+        await model.pollNetwork()   // failover joins "Phone", sets network.current = "Phone"
+        await model.pollNetwork()   // now observes "Phone" and publishes it
+
+        XCTAssertEqual(model.currentSSID, "Phone")
+        XCTAssertTrue(model.isOnHotspot)
+        XCTAssertFalse(model.isOnTrustedWiFi)
+    }
+
+    func testUnreadableSSIDKeepsLastPublishedSSID() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: false)
+        )
+
+        await model.pollNetwork()
+        XCTAssertEqual(model.currentSSID, "Home")
+
+        // Unreadable SSID: pollNetwork early-returns before publishing, so the
+        // last known value must stand.
+        network.current = nil
+        network.associatedWithoutSSID = true
+        await model.pollNetwork()
+
+        XCTAssertEqual(model.currentSSID, "Home")
+    }
 }

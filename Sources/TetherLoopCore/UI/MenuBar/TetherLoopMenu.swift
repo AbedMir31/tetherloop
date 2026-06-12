@@ -38,9 +38,11 @@ public struct TetherLoopMenu: View {
         Button("Try Hotspot Now", systemImage: "antenna.radiowaves.left.and.right") {
             model.tryHotspotNow()
         }
+        .disabled(model.isOnHotspot || model.settings.hotspotSSID == nil)
         Button("Return to Wi-Fi", systemImage: "wifi") {
             Task { await model.returnToWiFi() }
         }
+        .disabled(model.isOnTrustedWiFi)
 
         Divider()
 
