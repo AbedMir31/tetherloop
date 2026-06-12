@@ -106,6 +106,35 @@ final class ProtectionStateMachineTests: XCTestCase {
         XCTAssertEqual(result.status, .protected)
     }
 
+    func testRetrySchedulingStopsAfterPolicyExhaustion() {
+        var machine = ProtectionStateMachine(settings: verifiedSettings(), retryPolicy: RetryPolicy(delays: [0, 1]))
+
+        let first = machine.handle(.hotspotJoinFailed("first"))
+        XCTAssertEqual(first.status, .failed)
+        XCTAssertTrue(first.intents.contains { if case .scheduleRetry = $0 { return true } else { return false } })
+
+        let second = machine.handle(.hotspotJoinFailed("second"))
+        XCTAssertEqual(second.status, .failed)
+        XCTAssertTrue(second.intents.contains { if case .scheduleRetry = $0 { return true } else { return false } })
+
+        let third = machine.handle(.hotspotJoinFailed("third"))
+        XCTAssertEqual(third.status, .failed)
+        XCTAssertFalse(third.intents.contains { if case .scheduleRetry = $0 { return true } else { return false } })
+    }
+
+    func testHotspotJoinSuccessResetsRetryAttempts() {
+        var machine = ProtectionStateMachine(settings: verifiedSettings(), retryPolicy: RetryPolicy(delays: [0, 1]))
+
+        let beforeSuccess = machine.handle(.hotspotJoinFailed("first"))
+        XCTAssertTrue(beforeSuccess.intents.contains(.scheduleRetry(0)))
+
+        _ = machine.handle(.hotspotJoinSucceeded("Phone"))
+
+        let afterSuccess = machine.handle(.hotspotJoinFailed("again"))
+        XCTAssertEqual(afterSuccess.status, .failed)
+        XCTAssertTrue(afterSuccess.intents.contains(.scheduleRetry(0)))
+    }
+
     private func verifiedSettings() -> TetherLoopSettings {
         TetherLoopSettings(
             trustedSSIDs: ["Home"],
