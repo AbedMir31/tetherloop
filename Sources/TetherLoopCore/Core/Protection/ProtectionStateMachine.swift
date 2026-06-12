@@ -43,7 +43,7 @@ public struct ProtectionStateMachine: Equatable {
 
     public mutating func update(settings: TetherLoopSettings) {
         self.settings = settings
-        if status == .unconfigured || status == .monitoring || status == .protected || status == .paused {
+        if status == .unconfigured || status == .monitoring || status == .protected {
             status = Self.initialStatus(for: settings)
         }
     }

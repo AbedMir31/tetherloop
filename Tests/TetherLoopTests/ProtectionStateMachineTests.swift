@@ -84,6 +84,28 @@ final class ProtectionStateMachineTests: XCTestCase {
         XCTAssertEqual(result.status, .paused)
     }
 
+    func testUpdateSettingsKeepsPausedStatus() {
+        var machine = ProtectionStateMachine(settings: verifiedSettings())
+        _ = machine.handle(.userPause)
+        XCTAssertEqual(machine.status, .paused)
+
+        var mutated = verifiedSettings()
+        mutated.isSleepPreventionEnabled = false
+        machine.update(settings: mutated)
+
+        XCTAssertEqual(machine.status, .paused)
+    }
+
+    func testSettingsChangedEventClearsPause() {
+        var machine = ProtectionStateMachine(settings: verifiedSettings())
+        _ = machine.handle(.userPause)
+        XCTAssertEqual(machine.status, .paused)
+
+        let result = machine.handle(.settingsChanged)
+
+        XCTAssertEqual(result.status, .protected)
+    }
+
     private func verifiedSettings() -> TetherLoopSettings {
         TetherLoopSettings(
             trustedSSIDs: ["Home"],

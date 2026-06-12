@@ -633,4 +633,82 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(model.trustedSSIDs.isEmpty)
         XCTAssertTrue(store.load().trustedSSIDs.isEmpty)
     }
+
+    func testPauseSurvivesUnrelatedSettingsChanges() {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        model.pauseProtection()
+        XCTAssertEqual(model.status, .paused)
+
+        model.setSleepPreventionEnabled(true)
+        XCTAssertEqual(model.status, .paused)
+
+        model.addTrustedSSID("Office")
+        XCTAssertEqual(model.status, .paused)
+    }
+
+    func testPauseSurvivesNetworkChoicesRefresh() async {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let network = FakeNetworkAdapter(currentSSID: "Home")
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: network,
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        model.pauseProtection()
+        XCTAssertEqual(model.status, .paused)
+
+        await model.refreshNetworkChoices()
+
+        XCTAssertEqual(model.status, .paused)
+    }
+
+    func testEnableProtectionToggleClearsPause() {
+        let store = InMemorySettingsStore(TetherLoopSettings(
+            trustedSSIDs: ["Home"],
+            hotspotSSID: "Phone",
+            isSetupVerified: true,
+            isProtectionEnabled: true
+        ))
+        let model = AppModel(
+            settingsStore: store,
+            networkAdapter: FakeNetworkAdapter(),
+            powerController: RecordingPowerAssertionController(),
+            loginItemController: RecordingLoginItemController(),
+            diagnosticsStore: InMemoryDiagnosticLogStore(),
+            notificationDispatcher: RecordingNotificationDispatcher(),
+            locationAuthorization: RecordingLocationAuthorization(isAuthorized: true)
+        )
+
+        model.pauseProtection()
+        XCTAssertEqual(model.status, .paused)
+
+        model.setProtectionEnabled(true)
+
+        XCTAssertEqual(model.status, .protected)
+    }
 }
